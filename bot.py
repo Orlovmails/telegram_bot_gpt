@@ -1,10 +1,20 @@
+import logging
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CallbackQueryHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CallbackQueryHandler, ContextTypes, CommandHandler
 
 from gpt import ChatGptService
 from util import (load_message, send_text, send_image, show_main_menu,
-                  default_callback_handler)
+                  default_callback_handler, load_prompt, send_text_buttons)
+from credentials import ChatGPT_TOKEN, BOT_TOKEN
 
+# Налаштування логування
+logging.basicConfig(
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+chat_gpt = None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = load_message('main')
@@ -21,14 +31,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     })
 
+def main():
+    global chat_gpt
+    chat_gpt = ChatGptService(ChatGPT_TOKEN)
 
-chat_gpt = ChatGptService('ChatGPT TOKEN')
-app = ApplicationBuilder().token('Telegram TOKEN').build()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 # Зареєструвати обробник команди можна так:
 # app.add_handler(CommandHandler('command', handler_func))
 
 # Зареєструвати обробник колбеку можна так:
 # app.add_handler(CallbackQueryHandler(app_button, pattern='^app_.*'))
-app.add_handler(CallbackQueryHandler(default_callback_handler))
-app.run_polling()
+    app.add_handler(CommandHandler('start', start))
+    app.add_handler(CallbackQueryHandler(default_callback_handler))
+
+    logger.info("🚀 Bot started")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()

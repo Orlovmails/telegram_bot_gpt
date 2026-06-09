@@ -30,6 +30,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 'command': 'button text'
 
     })
+#Random_fact
+async def random_fact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_image(update, context, 'random')
+    try:
+        prompt = load_prompt('random')
+        response = await chat_gpt.send_question(prompt, "Розкажи випадковий цікавий факт")
+    except Exception as e:
+        logger.error(f"GPT error: {e}", exc_info=True)
+        response = "❌ Не вдалося отримати факт. Спробуйте пізніше."
+
+    await send_text_buttons(update, context, response, {
+        'random_finish': 'Закінчити',
+        'random_one_more': 'Хочу ще факт'
+    })
+
+async def random_buttons_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    query = update.callback_query.data
+    if query == 'random_finish':
+        await start(update, context)
+    elif query == 'random_one_more':
+        await random_fact(update, context)
 
 def main():
     global chat_gpt
@@ -43,6 +65,8 @@ def main():
 # Зареєструвати обробник колбеку можна так:
 # app.add_handler(CallbackQueryHandler(app_button, pattern='^app_.*'))
     app.add_handler(CommandHandler('start', start))
+    app.add_handler(CommandHandler('random', random_fact))
+    app.add_handler(CallbackQueryHandler(random_buttons_handler, pattern='^random_.*'))
     app.add_handler(CallbackQueryHandler(default_callback_handler))
 
     logger.info("🚀 Bot started")

@@ -1,6 +1,7 @@
 import logging
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, ContextTypes, CommandHandler
+from telegram.ext import MessageHandler, filters
 
 from gpt import ChatGptService
 from util import (load_message, send_text, send_image, show_main_menu,
@@ -53,6 +54,30 @@ async def random_buttons_handler(update: Update, context: ContextTypes.DEFAULT_T
     elif query == 'random_one_more':
         await random_fact(update, context)
 
+#ChatGPT інтерфейс
+async def gpt_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['mode'] = 'gpt'  # Встановлюємо режим
+    await send_image(update, context, 'gpt')
+    text = load_message('gpt')
+    await send_text(update, context, text)
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    mode = context.user_data.get('mode')
+
+    if mode == 'gpt':
+        # Надсилаємо проміжне повідомлення, бо ШІ може відповідати кілька секунд
+        waiting_msg = await send_text(update, context, "Thinking... 🤖")
+        try:
+            # Використовуємо add_message, щоб тримався контекст бесіди
+            response = await chat_gpt.add_message(update.message.text)
+        except Exception as e:
+            logger.error(f"GPT error: {e}")
+            response = "❌ Помилка сервісу ШІ."
+
+        # Видаляємо "Thinking..." та надсилаємо відповідь
+        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=waiting_msg.message_id)
+        await send_text(update, context, response)
+
 def main():
     global chat_gpt
     chat_gpt = ChatGptService(ChatGPT_TOKEN)
@@ -66,6 +91,8 @@ def main():
 # app.add_handler(CallbackQueryHandler(app_button, pattern='^app_.*'))
     app.add_handler(CommandHandler('start', start))
     app.add_handler(CommandHandler('random', random_fact))
+    app.add_handler(CommandHandler('gpt', gpt_mode))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(CallbackQueryHandler(random_buttons_handler, pattern='^random_.*'))
     app.add_handler(CallbackQueryHandler(default_callback_handler))
 

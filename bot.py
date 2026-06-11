@@ -1,4 +1,7 @@
 import logging
+import os                          # ДОДАНО: для роботи з операційною системою (os.getenv)
+from dotenv import load_dotenv     # ДОДАНО: для читання файлу .env
+
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, ContextTypes, CommandHandler
 from telegram.ext import MessageHandler, filters
@@ -6,7 +9,18 @@ from telegram.ext import MessageHandler, filters
 from gpt import ChatGptService
 from util import (load_message, send_text, send_image, show_main_menu,
                   default_callback_handler, load_prompt, send_text_buttons, send_html)
-from credentials import ChatGPT_TOKEN, BOT_TOKEN
+
+load_dotenv()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ChatGPT_TOKEN = os.getenv("CHATGPT_TOKEN")
+
+# Перевірка для безпеки (якщо забули створити .env файл)
+if not BOT_TOKEN or not ChatGPT_TOKEN:
+    raise ValueError(
+        "❌ ПОМИЛКА: Токени BOT_TOKEN або CHATGPT_TOKEN не знайдені у файлі .env!\n"
+        "Перевірте, чи створили ви файл .env в папці з ботом."
+    )
 
 # Налаштування логування
 logging.basicConfig(
@@ -15,7 +29,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-chat_gpt = None
+# 2. ІНІЦІАЛІЗАЦІЯ СЕРВІСУ (Замість порожнього None)
+chat_gpt = ChatGptService(ChatGPT_TOKEN)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['mode'] = None

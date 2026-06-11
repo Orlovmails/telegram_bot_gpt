@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 chat_gpt = None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['mode'] = None
     text = load_message('main')
     await send_image(update, context, 'main')
     await send_text(update, context, text)
@@ -26,7 +27,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'random': 'Дізнатися випадковий цікавий факт 🧠',
         'gpt': 'Задати питання чату GPT 🤖',
         'talk': 'Поговорити з відомою особистістю 👤',
-        'quiz': 'Взяти участь у квізі ❓'
+        'quiz': 'Взяти участь у квізі ❓',
+        'photoai': 'Розпізнавання зображень 📸'
         # Додати команду в меню можна так:
         # 'command': 'button text'
 
@@ -195,6 +197,59 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await send_text(update, context, "Будь ласка, оберіть режим у меню або введіть команду.")
 
+#PhotoAI
+async def photoai_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Встановлюємо режим користувача, щоб бот знав, що ми чекаємо на фото
+    context.user_data['mode'] = 'photoai'
+
+    # Підтягуємо картинку photoai.jpg з resources/images/
+    await send_image(update, context, 'photoai')
+
+    # Підтягуємо текст з resources/messages/photoai.txt
+    text = load_message('photoai')
+    await send_text(update, context, text)
+
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    mode = context.user_data.get('mode')
+
+    # Бот реагує на фото ТІЛЬКИ якщо користувач увійшов у режим photoai
+    if mode == 'photoai':
+        # Отримуємо фото у найкращій якості
+        photo_file = await update.message.photo[-1].get_file()
+
+        # НАДВАЖЛИВО: Отримуємо пряме та валідне HTTP-посилання на файл фотографії
+        # Бібліотека python-telegram-bot сама згенерує повну адресу: https://api.telegram.org/...
+        photo_url = photo_file.file_path
+
+        waiting_msg = await send_text(update, context, "Аналізую зображення... 🔍")
+
+        try:
+            # Завантажуємо системний промпт з файлу
+            prompt = load_prompt('photoai')
+
+            # Викликаємо метод (тут await потрібен, бо метод async def)
+            response = await chat_gpt.send_image_question(prompt, photo_url)
+
+        except Exception as e:
+            logger.error(f"Image analysis error: {e}", exc_info=True)
+            response = "❌ Не вдалося розпізнати зображення. Спробуйте пізніше."
+
+        # Видаляємо повідомлення "Аналізую зображення..." та надсилаємо опис користувачу
+        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=waiting_msg.message_id)
+
+        # Додаємо інлайн-кнопку "Закінчити", щоб користувач міг повернутись у головне меню
+        await send_text_buttons(update, context, response, {'photoai_finish': 'Закінчити'})
+    else:
+        # Якщо користувач скинув фото просто так, без увімкненого режиму
+        await send_text(update, context, "Будь ласка, спочатку оберіть режим 'Розпізнавання зображень 📸' у меню.")
+
+
+async def photoai_finish_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    context.user_data['mode'] = None
+    await start(update, context)
+
 def main():
     global chat_gpt
     chat_gpt = ChatGptService(ChatGPT_TOKEN)
@@ -211,6 +266,7 @@ def main():
     app.add_handler(CommandHandler('gpt', gpt_mode))
     app.add_handler(CommandHandler('talk', talk_mode))
     app.add_handler(CommandHandler('quiz', quiz_mode))
+    app.add_handler(CommandHandler('photoai', photoai_mode))
 
     # Реєстрація кнопок вибору персонажів та завершення розмови
     app.add_handler(CallbackQueryHandler(talk_buttons_handler, pattern='^talk_(cobain|hawking|nietzsche|queen|tolkien)'))
@@ -220,6 +276,9 @@ def main():
     app.add_handler(CallbackQueryHandler(quiz_next_handler, pattern='^quiz_(more|change|finish)'))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+
+    app.add_handler(CallbackQueryHandler(photoai_finish_handler, pattern='^photoai_finish$'))
     app.add_handler(CallbackQueryHandler(random_buttons_handler, pattern='^random_.*'))
     app.add_handler(CallbackQueryHandler(default_callback_handler))
 

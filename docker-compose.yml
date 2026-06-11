@@ -8,5 +8,5 @@ services:
     container_name: telegram_gpt_bot
     restart: always
     environment:
-      - BOT_TOKEN
-      - CHATGPT_TOKEN
+      - BOT_TOKEN=${BOT_TOKEN}
+      - CHATGPT_TOKEN=${CHATGPT_TOKEN}

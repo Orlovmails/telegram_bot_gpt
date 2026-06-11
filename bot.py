@@ -28,7 +28,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'gpt': 'Задати питання чату GPT 🤖',
         'talk': 'Поговорити з відомою особистістю 👤',
         'quiz': 'Взяти участь у квізі ❓',
-        'photoai': 'Розпізнавання зображень 📸'
+        'photoai': 'Розпізнавання зображень 📸',
+        'resume': 'Допомога з резюме 📝'
         # Додати команду в меню можна так:
         # 'command': 'button text'
 
@@ -55,6 +56,23 @@ async def random_buttons_handler(update: Update, context: ContextTypes.DEFAULT_T
         await start(update, context)
     elif query == 'random_one_more':
         await random_fact(update, context)
+
+#RESUME
+async def resume_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Встановлюємо початковий стан для конструктора резюме
+    context.user_data['mode'] = 'resume_education'
+    context.user_data['resume_data'] = {} # Тут зберігатимемо відповіді користувача
+
+    await send_image(update, context, 'resume')
+    text = load_message('resume')
+    await send_text(update, context, text)
+
+
+async def resume_finish_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    context.user_data['mode'] = None
+    context.user_data.pop('resume_data', None)
+    await start(update, context)
 
 #ChatGPT інтерфейс
 async def gpt_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -193,6 +211,64 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Quiz process error: {e}", exc_info=True)
             await send_text(update, context, "❌ Сталася помилка при обробці вашої відповіді.")
+#Додаємо запитання на резюме
+    elif mode == 'resume_education':
+        context.user_data['resume_data']['education'] = update.message.text
+
+        # Перемикаємо на наступний крок
+        context.user_data['mode'] = 'resume_experience'
+        await send_text(update, context,
+                        "Чудово! Тепер опиши свій досвід роботи (компанії, посади, обов'язки, роки роботи):")
+
+    elif mode == 'resume_experience':
+        context.user_data['resume_data']['experience'] = update.message.text
+
+        # Перемикаємо на фінальний крок запитань
+        context.user_data['mode'] = 'resume_skills'
+        await send_text(update, context,
+                        "Зрозуміло. І останнє — перерахуй свої ключові навички та володіння мовами/інструментами:")
+
+    elif mode == 'resume_skills':
+        context.user_data['resume_data']['skills'] = update.message.text
+
+        waiting_msg = await send_text(update, context, "Генерую ваше професійне резюме... 🧠📄")
+
+        try:
+            # Збираємо всі відповіді докупи
+            user_info = (
+                f"ОСВІТА:\n{context.user_data['resume_data']['education']}\n\n"
+                f"ДОСВІД РОБОТИ:\n{context.user_data['resume_data']['experience']}\n\n"
+                f"НАВИЧКИ:\n{context.user_data['resume_data']['skills']}"
+            )
+
+            # Завантажуємо HR промпт та надсилаємо запит в GPT
+            prompt = load_prompt('resume')
+            response = await chat_gpt.send_question(prompt, user_info)
+
+            # Видаляємо маркер початку та кінця кодового блоку Markdown, якщо ШІ його додав
+            if response.startswith("```html"):
+                response = response.replace("```html", "", 1)
+            if response.endswith("```"):
+                response = response.rsplit("```", 1)[0]
+
+                # Замінюємо кореневі теги, які ламають парсер Telegram
+                response = response.replace("<html>", "").replace("</html>", "")
+                response = response.replace("<body>", "").replace("</body>", "")
+                response = response.strip()
+
+        except Exception as e:
+            logger.error(f"Resume generation error: {e}", exc_info=True)
+            response = "❌ Не вдалося згенерувати резюме через технічну помилку ШІ."
+
+        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=waiting_msg.message_id)
+
+        # Очищуємо режим, бо генерацію завершено
+        context.user_data['mode'] = None
+        context.user_data.pop('resume_data', None)
+
+        # Використовуємо send_html, оскільки у промпті просимо ШІ використовувати HTML теги (наприклад <b>)
+        await send_html(update, context, response)
+        await send_text_buttons(update, context, "Бажаєте повернутись у меню?", {'resume_finish': 'Закінчити'})
 
     else:
         await send_text(update, context, "Будь ласка, оберіть режим у меню або введіть команду.")
@@ -267,6 +343,7 @@ def main():
     app.add_handler(CommandHandler('talk', talk_mode))
     app.add_handler(CommandHandler('quiz', quiz_mode))
     app.add_handler(CommandHandler('photoai', photoai_mode))
+    app.add_handler(CommandHandler('resume', resume_mode))
 
     # Реєстрація кнопок вибору персонажів та завершення розмови
     app.add_handler(CallbackQueryHandler(talk_buttons_handler, pattern='^talk_(cobain|hawking|nietzsche|queen|tolkien)'))
@@ -277,6 +354,8 @@ def main():
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+
+    app.add_handler(CallbackQueryHandler(resume_finish_handler, pattern='^resume_finish$'))
 
     app.add_handler(CallbackQueryHandler(photoai_finish_handler, pattern='^photoai_finish$'))
     app.add_handler(CallbackQueryHandler(random_buttons_handler, pattern='^random_.*'))

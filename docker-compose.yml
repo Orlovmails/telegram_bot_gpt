@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  tg_bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: telegram_gpt_bot
+    restart: always
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - CHATGPT_TOKEN=${CHATGPT_TOKEN}

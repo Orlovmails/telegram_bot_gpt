@@ -1,4 +1,5 @@
 # Default ignored files
+bot.db
 /shelf/
 /workspace.xml
 # Ignored default folder with query files

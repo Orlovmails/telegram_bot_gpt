@@ -1,21 +1,14 @@
-from openai import OpenAI
-import httpx as httpx
+from openai import AsyncOpenAI
 
 
 class ChatGptService:
-    client: OpenAI = None
-    message_list: list = None
-
     def __init__(self, token):
-        token = "sk-proj-" + token[:3:-1] if token.startswith('gpt:') else token
-        self.client = OpenAI(
-            http_client=httpx.Client(proxy="http://18.199.183.77:49232"),
-            api_key=token)
+        self.client = AsyncOpenAI(api_key=token)
         self.message_list = []
 
     async def send_message_list(self) -> str:
-        completion = self.client.chat.completions.create(
-            model="gpt-4o-mini",  # gpt-4o,  gpt-4-turbo,    gpt-3.5-turbo,  GPT-4o mini, gpt-3.5-turbo
+        completion = await self.client.chat.completions.create(
+            model="gpt-4o-mini",
             messages=self.message_list,
             max_tokens=3000,
             temperature=0.9
@@ -38,9 +31,8 @@ class ChatGptService:
         self.message_list.append({"role": "user", "content": message_text})
         return await self.send_message_list()
 
-#розпізнаємо картинки
     async def send_image_question(self, prompt_text: str, image_url: str) -> str:
-        completion = self.client.chat.completions.create(
+        completion = await self.client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": prompt_text},

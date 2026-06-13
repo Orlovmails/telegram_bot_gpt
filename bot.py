@@ -31,6 +31,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+QUIZ_TOPICS = ['quiz_prog', 'quiz_math', 'quiz_biology']
+
 
 def get_user_gpt(context: ContextTypes.DEFAULT_TYPE) -> ChatGptService:
     if 'gpt' not in context.user_data:
@@ -38,9 +40,13 @@ def get_user_gpt(context: ContextTypes.DEFAULT_TYPE) -> ChatGptService:
     return context.user_data['gpt']
 
 
-def clear_user_gpt(context: ContextTypes.DEFAULT_TYPE):
-    gpt = get_user_gpt(context)
-    gpt.message_list.clear()
+def reset_state(context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['gpt'] = ChatGptService(ChatGPT_TOKEN)
+    context.user_data['mode'] = None
+    context.user_data['quiz_score'] = 0
+    context.user_data['quiz_topic_selected'] = False
+    context.user_data['quiz_current_topic'] = None
+    context.user_data['resume_data'] = {}
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -53,12 +59,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     save_user(user.id, user.username, user.first_name)
 
-    clear_user_gpt(context)
-    context.user_data['mode'] = None
-    context.user_data.pop('resume_data', None)
-    context.user_data.pop('quiz_score', None)
-    context.user_data.pop('quiz_topic_selected', None)
-    context.user_data.pop('quiz_current_topic', None)
+    reset_state(context)
     text = load_message('main')
     await send_image_with_text(update, context, 'main', text)
     await show_main_menu(update, context, {
@@ -111,9 +112,8 @@ async def gpt_finish_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def resume_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    clear_user_gpt(context)
+    reset_state(context)
     context.user_data['mode'] = 'resume_education'
-    context.user_data['resume_data'] = {}
 
     text = load_message('resume')
     await send_image_with_text(update, context, 'resume', text)
@@ -125,7 +125,7 @@ async def resume_finish_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def gpt_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    clear_user_gpt(context)
+    reset_state(context)
     gpt = get_user_gpt(context)
     prompt = load_prompt('gpt')
     gpt.set_prompt(prompt)
@@ -135,7 +135,7 @@ async def gpt_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def talk_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    clear_user_gpt(context)
+    reset_state(context)
     context.user_data['mode'] = 'talk'
     text = load_message('talk')
     await send_image_with_text_buttons(update, context, 'talk', text, {
@@ -166,10 +166,8 @@ async def talk_buttons_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def quiz_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    clear_user_gpt(context)
+    reset_state(context)
     context.user_data['mode'] = 'quiz'
-    context.user_data['quiz_score'] = 0
-    context.user_data['quiz_topic_selected'] = False
 
     await send_image_with_text_buttons(update, context, 'quiz', "Обери тему для квізу:", {
         'quiz_prog': 'Програмування 💻',
@@ -190,7 +188,7 @@ async def quiz_buttons_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['quiz_topic_selected'] = True
 
         if query == 'quiz_more':
-            query = random.choice(['quiz_prog', 'quiz_math', 'quiz_biology'])
+            query = random.choice(QUIZ_TOPICS)
 
         context.user_data['quiz_current_topic'] = query
         question = await gpt.add_message(query)
@@ -212,7 +210,7 @@ async def quiz_next_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             question = await gpt.add_message(current_topic)
             await send_html(update, context, question)
         elif query == 'quiz_random':
-            new_topic = random.choice(['quiz_prog', 'quiz_math', 'quiz_biology'])
+            new_topic = random.choice(QUIZ_TOPICS)
             context.user_data['quiz_current_topic'] = new_topic
             question = await gpt.add_message(new_topic)
             await send_html(update, context, question)
@@ -283,7 +281,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             gpt = get_user_gpt(context)
             result = await gpt.add_message(answer)
 
-            if result and "правильно" in result.lower() and "неправильно" not in result.lower():
+            if result and result.startswith("✅"):
                 context.user_data['quiz_score'] += 1
 
             score = context.user_data['quiz_score']
@@ -352,7 +350,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def photoai_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    clear_user_gpt(context)
+    reset_state(context)
     context.user_data['mode'] = 'photoai'
 
     text = load_message('photoai')

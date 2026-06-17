@@ -33,6 +33,28 @@ logger = logging.getLogger(__name__)
 
 QUIZ_TOPICS = ['quiz_prog', 'quiz_math', 'quiz_biology']
 
+TALK_CHARACTERS = {
+    'talk_cobain': 'Курт Кобейн 🎸',
+    'talk_hawking': 'Стівен Гокінг 🌌',
+    'talk_nietzsche': 'Фрідріх Ніцше 🧠',
+    'talk_queen': 'Єлизавета II 👑',
+    'talk_tolkien': 'Джон Толкін 📖',
+}
+
+QUIZ_TOPICS_BTN = {
+    'quiz_prog': 'Програмування 💻',
+    'quiz_math': 'Математика 🟰',
+    'quiz_biology': 'Біологія 🧬',
+    'quiz_random': 'Випадкова тема 🎲',
+}
+
+QUIZ_NEXT_BTNS = {
+    'quiz_more': 'Хочу ще питання',
+    'quiz_random': 'Випадкова тема 🎲',
+    'quiz_change': 'Змінити тему',
+    'quiz_finish': 'Закінчити квіз'
+}
+
 
 def get_user_gpt(context: ContextTypes.DEFAULT_TYPE) -> ChatGptService:
     if 'gpt' not in context.user_data:
@@ -46,7 +68,16 @@ def reset_state(context: ContextTypes.DEFAULT_TYPE):
     context.user_data['quiz_score'] = 0
     context.user_data['quiz_topic_selected'] = False
     context.user_data['quiz_current_topic'] = None
+    context.user_data['quiz_waiting_for_action'] = False
+    context.user_data['talk_waiting_for_selection'] = False
     context.user_data['resume_data'] = {}
+
+
+async def rate_limit_check(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> bool:
+    if not check_rate_limit(user_id, 'gpt'):
+        await send_text(update, context, "⏳ Забагато запитів. Зачекайте хвилину.")
+        return True
+    return False
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -76,8 +107,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def random_fact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if not check_rate_limit(user_id, 'gpt'):
-        await send_text(update, context, "⏳ Забагато запитів. Зачекайте хвилину.")
+    if await rate_limit_check(update, context, user_id):
         return
 
     waiting_msg = await send_text(update, context, load_message('random'))
@@ -114,7 +144,6 @@ async def gpt_finish_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def resume_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reset_state(context)
     context.user_data['mode'] = 'resume_education'
-
     text = load_message('resume')
     await send_image_with_text(update, context, 'resume', text)
 
@@ -127,24 +156,16 @@ async def resume_finish_handler(update: Update, context: ContextTypes.DEFAULT_TY
 async def gpt_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reset_state(context)
     gpt = get_user_gpt(context)
-    prompt = load_prompt('gpt')
-    gpt.set_prompt(prompt)
+    gpt.set_prompt(load_prompt('gpt'))
     context.user_data['mode'] = 'gpt'
-    text = load_message('gpt')
-    await send_image_with_text(update, context, 'gpt', text)
+    await send_image_with_text(update, context, 'gpt', load_message('gpt'))
 
 
 async def talk_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reset_state(context)
     context.user_data['mode'] = 'talk'
-    text = load_message('talk')
-    await send_image_with_text_buttons(update, context, 'talk', text, {
-        'talk_cobain': 'Курт Кобейн 🎸',
-        'talk_hawking': 'Стівен Гокінг 🌌',
-        'talk_nietzsche': 'Фрідріх Ніцше 🧠',
-        'talk_queen': 'Єлизавета II 👑',
-        'talk_tolkien': 'Джон Толкін 📖',
-    })
+    context.user_data['talk_waiting_for_selection'] = True
+    await send_image_with_text_buttons(update, context, 'talk', load_message('talk'), TALK_CHARACTERS)
 
 
 async def talk_buttons_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -155,11 +176,12 @@ async def talk_buttons_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await start(update, context)
         return
 
+    context.user_data['talk_waiting_for_selection'] = False
+
     try:
         gpt = get_user_gpt(context)
-        prompt = load_prompt(query)
-        gpt.set_prompt(prompt)
-        await send_text(update, context, f"Привіт! Я готовий до розмови з тобою. Запитуй будь-що.")
+        gpt.set_prompt(load_prompt(query))
+        await send_text(update, context, "Привіт! Я готовий до розмови з тобою. Запитуй будь-що.")
     except Exception as e:
         logger.error(f"Error loading talk prompt: {e}")
         await send_text(update, context, "❌ Не вдалося завантажити промпт особистості.")
@@ -168,13 +190,7 @@ async def talk_buttons_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 async def quiz_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reset_state(context)
     context.user_data['mode'] = 'quiz'
-
-    await send_image_with_text_buttons(update, context, 'quiz', "Обери тему для квізу:", {
-        'quiz_prog': 'Програмування 💻',
-        'quiz_math': 'Математика 🟰',
-        'quiz_biology': 'Біологія 🧬',
-        'quiz_more': 'Випадкова тема 🎲',
-    })
+    await send_image_with_text_buttons(update, context, 'quiz', load_message('quiz'), QUIZ_TOPICS_BTN)
 
 
 async def quiz_buttons_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -183,16 +199,14 @@ async def quiz_buttons_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     try:
         gpt = get_user_gpt(context)
-        prompt = load_prompt('quiz')
-        gpt.set_prompt(prompt)
+        gpt.set_prompt(load_prompt('quiz'))
         context.user_data['quiz_topic_selected'] = True
 
-        if query == 'quiz_more':
+        if query == 'quiz_random':
             query = random.choice(QUIZ_TOPICS)
 
         context.user_data['quiz_current_topic'] = query
         question = await gpt.add_message(query)
-
         await send_html(update, context, question)
     except Exception as e:
         logger.error(f"Quiz starting error: {e}", exc_info=True)
@@ -202,26 +216,27 @@ async def quiz_buttons_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 async def quiz_next_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     query = update.callback_query.data
+    context.user_data['quiz_waiting_for_action'] = False
 
     try:
         gpt = get_user_gpt(context)
-        if query == 'quiz_same':
-            current_topic = context.user_data.get('quiz_current_topic', 'quiz_prog')
-            question = await gpt.add_message(current_topic)
-            await send_html(update, context, question)
+        if query == 'quiz_more':
+            topic = context.user_data.get('quiz_current_topic', 'quiz_prog')
         elif query == 'quiz_random':
-            new_topic = random.choice(QUIZ_TOPICS)
-            context.user_data['quiz_current_topic'] = new_topic
-            question = await gpt.add_message(new_topic)
-            await send_html(update, context, question)
+            topic = random.choice(QUIZ_TOPICS)
+            context.user_data['quiz_current_topic'] = topic
         elif query == 'quiz_change':
             await quiz_mode(update, context)
+            return
         elif query == 'quiz_finish':
             user_id = update.effective_user.id
-            score = context.user_data.get('quiz_score', 0)
-            save_quiz_score(user_id, 'quiz', score)
+            save_quiz_score(user_id, 'quiz', context.user_data.get('quiz_score', 0))
             update_stat(user_id, 'quiz_games')
             await start(update, context)
+            return
+
+        question = await gpt.add_message(topic)
+        await send_html(update, context, question)
     except Exception as e:
         logger.error(f"Quiz next error: {e}", exc_info=True)
         await send_text(update, context, "❌ Сталася помилка при генерації наступного питання.")
@@ -229,8 +244,7 @@ async def quiz_next_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_gpt_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if not check_rate_limit(user_id, 'gpt'):
-        await send_text(update, context, "⏳ Забагато запитів. Зачекайте хвилину.")
+    if await rate_limit_check(update, context, user_id):
         return
 
     waiting_msg = await send_text(update, context, "Thinking... 🤖")
@@ -247,9 +261,13 @@ async def handle_gpt_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_talk_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get('talk_waiting_for_selection'):
+        await send_image_with_text_buttons(update, context, 'talk',
+                                           "Будь ласка, оберіть відому особистість:", TALK_CHARACTERS)
+        return
+
     user_id = update.effective_user.id
-    if not check_rate_limit(user_id, 'gpt'):
-        await send_text(update, context, "⏳ Забагато запитів. Зачекайте хвилину.")
+    if await rate_limit_check(update, context, user_id):
         return
 
     try:
@@ -263,38 +281,29 @@ async def handle_talk_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_quiz_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get('quiz_waiting_for_action'):
+        await send_text_buttons(update, context, "Будь ласка, оберіть що робити далі:", QUIZ_NEXT_BTNS)
+        return
+
     if not context.user_data.get('quiz_topic_selected'):
-        await send_image_with_text_buttons(update, context, 'quiz', "Будь ласка, оберіть тему кнопкою нижче:", {
-            'quiz_prog': 'Програмування 💻',
-            'quiz_math': 'Математика 🟰',
-            'quiz_biology': 'Біологія 🧬',
-            'quiz_more': 'Випадкова тема 🎲',
-        })
+        await send_image_with_text_buttons(update, context, 'quiz',
+                                           "Будь ласка, оберіть тему кнопкою нижче:", QUIZ_TOPICS_BTN)
         return
 
     user_id = update.effective_user.id
-    if not check_rate_limit(user_id, 'gpt'):
-        await send_text(update, context, "⏳ Забагато запитів. Зачекайте хвилину.")
+    if await rate_limit_check(update, context, user_id):
         return
 
-    answer = update.message.text
     try:
         gpt = get_user_gpt(context)
-        result = await gpt.add_message(answer)
+        result = await gpt.add_message(update.message.text)
 
         if result and result.startswith("✅"):
             context.user_data['quiz_score'] += 1
 
-        score = context.user_data['quiz_score']
-
-        await send_html(update, context, f"{result}\n\n🏆 Ваш поточний рахунок: {score}")
-
-        await send_text_buttons(update, context, "Що робимо далі?", {
-            'quiz_same': 'Хочу ще питання',
-            'quiz_random': 'Випадкова тема 🎲',
-            'quiz_change': 'Змінити тему',
-            'quiz_finish': 'Закінчити квіз'
-        })
+        await send_html(update, context, f"{result}\n\n🏆 Ваш поточний рахунок: {context.user_data['quiz_score']}")
+        await send_text_buttons(update, context, "Що робимо далі?", QUIZ_NEXT_BTNS)
+        context.user_data['quiz_waiting_for_action'] = True
     except Exception as e:
         logger.error(f"Quiz process error: {e}", exc_info=True)
         await send_text(update, context, "❌ Сталася помилка при обробці вашої відповіді.")
@@ -318,7 +327,6 @@ async def handle_resume_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     elif mode == 'resume_skills':
         context.user_data['resume_data']['skills'] = update.message.text
-
         waiting_msg = await send_text(update, context, "Генерую ваше професійне резюме... 🧠📄")
 
         try:
@@ -327,27 +335,22 @@ async def handle_resume_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 f"ДОСВІД РОБОТИ:\n{context.user_data['resume_data']['experience']}\n\n"
                 f"НАВИЧКИ:\n{context.user_data['resume_data']['skills']}"
             )
-
             gpt = get_user_gpt(context)
-            prompt = load_prompt('resume')
-            response = await gpt.send_question(prompt, user_info)
+            response = await gpt.send_question(load_prompt('resume'), user_info)
             update_stat(user_id, 'resume_count')
 
             if response.startswith("```html"):
                 response = response.replace("```html", "", 1)
             if response.endswith("```"):
                 response = response.rsplit("```", 1)[0]
-
             response = response.replace("<html>", "").replace("</html>", "")
             response = response.replace("<body>", "").replace("</body>", "")
             response = response.strip()
-
         except Exception as e:
             logger.error(f"Resume generation error: {e}", exc_info=True)
             response = "❌ Не вдалося згенерувати резюме через технічну помилку ШІ."
 
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=waiting_msg.message_id)
-
         await send_html(update, context, response)
         await send_text_buttons(update, context, "Бажаєте повернутись у меню?", {'resume_finish': 'Закінчити'})
 
@@ -374,34 +377,26 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def photoai_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reset_state(context)
     context.user_data['mode'] = 'photoai'
-
-    text = load_message('photoai')
-    await send_image_with_text(update, context, 'photoai', text)
+    await send_image_with_text(update, context, 'photoai', load_message('photoai'))
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    mode = context.user_data.get('mode')
-
-    if mode == 'photoai':
-        photo_file = await update.message.photo[-1].get_file()
-        photo_url = photo_file.file_path
-
-        waiting_msg = await send_text(update, context, "Аналізую зображення... 🔍")
-
-        try:
-            gpt = get_user_gpt(context)
-            prompt = load_prompt('photoai')
-            response = await gpt.send_image_question(prompt, photo_url)
-
-        except Exception as e:
-            logger.error(f"Image analysis error: {e}", exc_info=True)
-            response = "❌ Не вдалося розпізнати зображення. Спробуйте пізніше."
-
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=waiting_msg.message_id)
-
-        await send_text_buttons(update, context, response, {'photoai_finish': 'Закінчити'})
-    else:
+    if context.user_data.get('mode') != 'photoai':
         await send_text(update, context, "Будь ласка, спочатку оберіть режим 'Розпізнавання зображень 📸' у меню.")
+        return
+
+    photo_file = await update.message.photo[-1].get_file()
+    waiting_msg = await send_text(update, context, "Аналізую зображення... 🔍")
+
+    try:
+        gpt = get_user_gpt(context)
+        response = await gpt.send_image_question(load_prompt('photoai'), photo_file.file_path)
+    except Exception as e:
+        logger.error(f"Image analysis error: {e}", exc_info=True)
+        response = "❌ Не вдалося розпізнати зображення. Спробуйте пізніше."
+
+    await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=waiting_msg.message_id)
+    await send_text_buttons(update, context, response, {'photoai_finish': 'Закінчити'})
 
 
 async def photoai_finish_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -410,25 +405,20 @@ async def photoai_finish_handler(update: Update, context: ContextTypes.DEFAULT_T
 
 
 async def stats_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    stats = get_user_stats(user_id)
-
-    text = (
+    stats = get_user_stats(update.effective_user.id)
+    await send_html(update, context, (
         f"📊 <b>Ваша статистика:</b>\n\n"
         f"🧠 Випадкових фактів: <b>{stats['facts_count']}</b>\n"
         f"🤖 Повідомлень з GPT: <b>{stats['gpt_messages']}</b>\n"
         f"❓ Ігор у квіз: <b>{stats['quiz_games']}</b>\n"
         f"🏆 Найкращий рахунок: <b>{stats['quiz_best_score']}</b>\n"
         f"📝 Резюме згенеровано: <b>{stats['resume_count']}</b>"
-    )
-    await send_html(update, context, text)
+    ))
 
 
 def main():
     init_db()
-
     app = ApplicationBuilder().token(BOT_TOKEN).build()
-
     app.add_error_handler(error_handler)
 
     app.add_handler(CommandHandler('start', start))
@@ -441,9 +431,8 @@ def main():
     app.add_handler(CommandHandler('stats', stats_mode))
 
     app.add_handler(CallbackQueryHandler(talk_buttons_handler, pattern='^talk_'))
-
-    app.add_handler(CallbackQueryHandler(quiz_buttons_handler, pattern='^quiz_(prog|math|biology|more)$'))
-    app.add_handler(CallbackQueryHandler(quiz_next_handler, pattern='^quiz_(same|random|change|finish)$'))
+    app.add_handler(CallbackQueryHandler(quiz_buttons_handler, pattern='^quiz_(prog|math|biology|random)$'))
+    app.add_handler(CallbackQueryHandler(quiz_next_handler, pattern='^quiz_(more|random|change|finish)$'))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
@@ -456,6 +445,7 @@ def main():
 
     logger.info("🚀 Bot started")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()

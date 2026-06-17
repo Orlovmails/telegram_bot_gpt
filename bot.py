@@ -106,6 +106,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def random_fact(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reset_state(context)
+    context.user_data['mode'] = 'random'
     user_id = update.effective_user.id
     if await rate_limit_check(update, context, user_id):
         return
@@ -354,10 +356,15 @@ async def handle_resume_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await send_text_buttons(update, context, "Бажаєте повернутись у меню?", {'resume_finish': 'Закінчити'})
 
 
+async def handle_random_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_text(update, context, "Будь ласка, використовуйте кнопки для керування фактами.")
+
+
 TEXT_HANDLERS = {
     'gpt': handle_gpt_text,
     'talk': handle_talk_text,
     'quiz': handle_quiz_text,
+    'random': handle_random_text,
     'resume_education': handle_resume_text,
     'resume_experience': handle_resume_text,
     'resume_skills': handle_resume_text,

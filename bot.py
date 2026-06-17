@@ -14,6 +14,8 @@ from util import (load_message, send_text, show_main_menu,
                   default_callback_handler, load_prompt, send_text_buttons, send_html,
                   send_image_with_text, send_image_with_text_buttons, load_resume_questions)
 
+RESUME_QUESTIONS = load_resume_questions()
+
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -314,21 +316,20 @@ async def handle_quiz_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_resume_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = context.user_data.get('mode')
     user_id = update.effective_user.id
-    questions = load_resume_questions()
 
     if mode == 'resume_education':
         context.user_data['resume_data']['education'] = update.message.text
         context.user_data['mode'] = 'resume_experience'
-        await send_text(update, context, questions['resume_education'])
+        await send_text(update, context, RESUME_QUESTIONS['resume_education'])
 
     elif mode == 'resume_experience':
         context.user_data['resume_data']['experience'] = update.message.text
         context.user_data['mode'] = 'resume_skills'
-        await send_text(update, context, questions['resume_experience'])
+        await send_text(update, context, RESUME_QUESTIONS['resume_experience'])
 
     elif mode == 'resume_skills':
         context.user_data['resume_data']['skills'] = update.message.text
-        waiting_msg = await send_text(update, context, questions['resume_skills'])
+        waiting_msg = await send_text(update, context, RESUME_QUESTIONS['resume_skills'])
 
         try:
             user_info = (

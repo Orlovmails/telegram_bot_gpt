@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, \
     BotCommand, MenuButtonCommands, BotCommandScopeChat, MenuButtonDefault
 from telegram import Update
@@ -81,18 +83,21 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE,
                                            chat_id=update.effective_chat.id)
 
 
+@lru_cache(maxsize=None)
 def load_message(name):
     with open("resources/messages/" + name + ".txt", "r",
               encoding="utf8") as file:
         return file.read()
 
 
+@lru_cache(maxsize=None)
 def load_prompt(name):
     with open("resources/prompts/" + name + ".txt", "r",
               encoding="utf8") as file:
         return file.read()
 
 
+@lru_cache(maxsize=None)
 def load_resume_questions():
     questions = {}
     with open("resources/messages/resume_questions.txt", "r", encoding="utf8") as file:

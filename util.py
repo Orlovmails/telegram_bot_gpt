@@ -93,6 +93,17 @@ def load_prompt(name):
         return file.read()
 
 
+def load_resume_questions():
+    questions = {}
+    with open("resources/messages/resume_questions.txt", "r", encoding="utf8") as file:
+        for line in file:
+            line = line.strip()
+            if '=' in line:
+                key, value = line.split('=', 1)
+                questions[key] = value
+    return questions
+
+
 async def default_callback_handler(update: Update,
                                    context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()

@@ -12,7 +12,7 @@ from database import (init_db, save_user, update_stat, save_quiz_score,
                       get_user_stats, check_rate_limit)
 from util import (load_message, send_text, show_main_menu,
                   default_callback_handler, load_prompt, send_text_buttons, send_html,
-                  send_image_with_text, send_image_with_text_buttons)
+                  send_image_with_text, send_image_with_text_buttons, load_resume_questions)
 
 load_dotenv()
 
@@ -312,22 +312,21 @@ async def handle_quiz_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_resume_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = context.user_data.get('mode')
     user_id = update.effective_user.id
+    questions = load_resume_questions()
 
     if mode == 'resume_education':
         context.user_data['resume_data']['education'] = update.message.text
         context.user_data['mode'] = 'resume_experience'
-        await send_text(update, context,
-                        "Чудово! Тепер опиши свій досвід роботи (компанії, посади, обов'язки, роки роботи):")
+        await send_text(update, context, questions['resume_education'])
 
     elif mode == 'resume_experience':
         context.user_data['resume_data']['experience'] = update.message.text
         context.user_data['mode'] = 'resume_skills'
-        await send_text(update, context,
-                        "Зрозуміло. І останнє — перерахуй свої ключові навички та володіння мовами/інструментами:")
+        await send_text(update, context, questions['resume_experience'])
 
     elif mode == 'resume_skills':
         context.user_data['resume_data']['skills'] = update.message.text
-        waiting_msg = await send_text(update, context, "Генерую ваше професійне резюме... 🧠📄")
+        waiting_msg = await send_text(update, context, questions['resume_skills'])
 
         try:
             user_info = (

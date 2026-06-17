@@ -50,7 +50,7 @@ QUIZ_TOPICS_BTN = {
 
 QUIZ_NEXT_BTNS = {
     'quiz_more': 'Хочу ще питання',
-    'quiz_random': 'Випадкова тема 🎲',
+    'quiz_random_next': 'Випадкова тема 🎲',
     'quiz_change': 'Змінити тему',
     'quiz_finish': 'Закінчити квіз'
 }
@@ -222,7 +222,7 @@ async def quiz_next_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         gpt = get_user_gpt(context)
         if query == 'quiz_more':
             topic = context.user_data.get('quiz_current_topic', 'quiz_prog')
-        elif query == 'quiz_random':
+        elif query == 'quiz_random_next':
             topic = random.choice(QUIZ_TOPICS)
             context.user_data['quiz_current_topic'] = topic
         elif query == 'quiz_change':
@@ -431,7 +431,7 @@ def main():
 
     app.add_handler(CallbackQueryHandler(talk_buttons_handler, pattern='^talk_'))
     app.add_handler(CallbackQueryHandler(quiz_buttons_handler, pattern='^quiz_(prog|math|biology|random)$'))
-    app.add_handler(CallbackQueryHandler(quiz_next_handler, pattern='^quiz_(more|random|change|finish)$'))
+    app.add_handler(CallbackQueryHandler(quiz_next_handler, pattern='^quiz_(more|random_next|change|finish)$'))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))

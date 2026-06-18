@@ -352,6 +352,7 @@ async def handle_resume_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             logger.error(f"Resume generation error: {e}", exc_info=True)
             response = "❌ Не вдалося згенерувати резюме через технічну помилку ШІ."
 
+        context.user_data['mode'] = None
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=waiting_msg.message_id)
         await send_html(update, context, response)
         await send_text_buttons(update, context, "Бажаєте повернутись у меню?", {'resume_finish': 'Закінчити'})

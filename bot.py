@@ -224,8 +224,9 @@ async def quiz_next_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         gpt = get_user_gpt(context)
+        topic = context.user_data.get('quiz_current_topic', QUIZ_TOPICS[0])
         if query == 'quiz_more':
-            topic = context.user_data.get('quiz_current_topic', QUIZ_TOPICS[0])
+            pass
         elif query == 'quiz_random_next':
             topic = random.choice(QUIZ_TOPICS)
             context.user_data['quiz_current_topic'] = topic
